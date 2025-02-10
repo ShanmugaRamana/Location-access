@@ -1,9 +1,10 @@
 import express from 'express';
-const router = express.Router();
-import https from 'https';
+import axios from 'axios'; // Use Axios for API requests
 import Location from '../models/Location.js';
 
-const DEFAULT_IP = '24.48.0.1'; // Default IP for localhost or invalid IP cases
+const router = express.Router();
+const API_KEY = '66d519b7fe594cbd90f4c3eedb6bd556'; // Replace with your API key
+const DEFAULT_IP = '24.48.0.1'; // Default IP for localhost
 
 router.get('/', async (req, res, next) => {
     try {
@@ -25,64 +26,48 @@ router.get('/', async (req, res, next) => {
 
         console.log('Detected IP:', ip);
 
-        // Use HTTPS and remove unnecessary query fields
-        const apiUrl = `https://ip-api.com/json/${ip}`;
+        // API request URL
+        const apiUrl = `https://api.ipgeolocation.io/ipgeo?apiKey=${API_KEY}&ip=${ip}`;
 
-        https.get(apiUrl, (apiRes) => {
-            let data = '';
+        // Fetch data from ipgeolocation.io
+        const response = await axios.get(apiUrl);
+        const location = response.data;
+        console.log('API Response:', location);
 
-            apiRes.on('data', (chunk) => {
-                data += chunk;
-            });
-
-            apiRes.on('end', async () => {
-                try {
-                    const location = JSON.parse(data);
-                    console.log('API Response:', location);
-
-                    if (location.status === 'fail') {
-                        console.error('IP-API query failed:', location);
-                        return res.status(500).json({ error: `Error fetching location data: ${location.message}` });
-                    }
-
-                    const countryCode = location.countryCode;
-                    const countryName = location.country;
-                    let message = '';
-
-                    if (countryCode === 'IN') {
-                        message = 'You are viewing from India.';
-                    } else if (countryCode === 'US') {
-                        message = 'Hello World.';
-                    } else {
-                        message = `Hello ${countryName}.`;
-                    }
-
-                    // Update MongoDB access count
-                    try {
-                        const result = await Location.findOneAndUpdate(
-                            { country: countryCode },
-                            { $inc: { count: 1 } },
-                            { upsert: true, new: true }
-                        );
-
-                        console.log('Access count updated:', result);
-                        res.json({ message });
-                    } catch (dbErr) {
-                        console.error('Error updating access count:', dbErr);
-                        return next(dbErr);
-                    }
-                } catch (parseError) {
-                    console.error('Error parsing JSON:', parseError);
-                    return res.status(500).json({ error: 'Error parsing location data' });
-                }
-            });
-        }).on('error', (apiErr) => {
-            console.error('Error fetching from IP-API:', apiErr);
+        if (!location || !location.country_code2) {
+            console.error('Invalid response from ipgeolocation.io:', location);
             return res.status(500).json({ error: 'Error fetching location data' });
-        });
+        }
+
+        const countryCode = location.country_code2;
+        const countryName = location.country_name;
+        let message = '';
+
+        if (countryCode === 'IN') {
+            message = 'You are viewing from India.';
+        } else if (countryCode === 'US') {
+            message = 'Hello World.';
+        } else {
+            message = `Hello ${countryName}.`;
+        }
+
+        // Update MongoDB access count
+        try {
+            const result = await Location.findOneAndUpdate(
+                { country: countryCode },
+                { $inc: { count: 1 } },
+                { upsert: true, new: true }
+            );
+
+            console.log('Access count updated:', result);
+            res.json({ message });
+        } catch (dbErr) {
+            console.error('Error updating access count:', dbErr);
+            return next(dbErr);
+        }
     } catch (error) {
-        console.error('Unexpected error:', error);
-        return next(error);
+        console.error('Error:', error);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 });
 
