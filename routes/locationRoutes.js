@@ -3,7 +3,7 @@ const router = express.Router();
 import http from 'http';
 import Location from '../models/Location.js';
 
-router.get('/', async (req, res, next) => { // Add next parameter
+router.get('/', async (req, res, next) => {
   try {
     let ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || '24.48.0.1';
 

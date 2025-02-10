@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import locationRoutes from './routes/locationRoutes.js';
-import mime from 'mime'; // Import the mime package
+import mime from 'mime';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -38,6 +38,22 @@ app.get('/favicon.ico', (req, res) => {
 
 // Routes
 app.use('/location', locationRoutes);
+
+// Catch-all route
+app.use((req, res) => {
+  res.status(404).send("Sorry, that route doesn't exist.");
+});
+
+// Error-handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Internal Server Error');
+});
+
+// Unhandled rejection handler
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 // Start the server
 app.listen(port, () => {
