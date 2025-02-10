@@ -3,19 +3,15 @@ const router = express.Router();
 import http from 'http';
 import Location from '../models/Location.js';
 
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => { // Add next parameter
   try {
-    // Get user's IP address (or use a default for testing)
-    let ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || '24.48.0.1'; // Add default IP
-    console.log(`User IP: ${ip}`);
+    let ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || '24.48.0.1';
 
-    // Handle IPv6 loopback address (::1)
     if (ip === '::1') {
-      ip = '24.48.0.1'; // Use the default IP when the user is in the local host
+      ip = '24.48.0.1';
       console.log('Using default IP for localhost.');
     }
 
-    // Fetch location data using ip-api.com
     const apiUrl = `http://ip-api.com/json/${ip}?fields=status,countryCode,country`;
 
     http.get(apiUrl, (apiRes) => {
@@ -30,8 +26,8 @@ router.get('/', async (req, res) => {
           const location = JSON.parse(data);
 
           if (location.status !== 'success') {
-            console.error('IP-API query failed:', location); // Log the entire response
-            const errorMessage = location.message || 'Unknown error from IP-API'; // Get more specific information
+            console.error('IP-API query failed:', location);
+            const errorMessage = location.message || 'Unknown error from IP-API';
             return res.status(500).json({ error: `Error fetching location data: ${errorMessage}` });
           }
 
@@ -57,21 +53,22 @@ router.get('/', async (req, res) => {
             console.log('Access count updated:', result);
           } catch (err) {
             console.error('Error updating access count:', err);
+            return next(err); // Pass Mongoose errors to Express
           }
 
           res.json({ message });
         } catch (parseError) {
           console.error('Error parsing JSON:', parseError);
-          res.status(500).json({ error: 'Error parsing location data' });
+          return res.status(500).json({ error: 'Error parsing location data' });
         }
       });
     }).on('error', (err) => {
       console.error('Error fetching from IP-API:', err);
-      res.status(500).json({ error: 'Error fetching location data' });
+      return res.status(500).json({ error: 'Error fetching location data' });
     });
   } catch (error) {
     console.error('Error:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    return next(error); // Pass synchronous errors to Express
   }
 });
 
