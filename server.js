@@ -1,9 +1,10 @@
-import 'dotenv/config'; // Use import for dotenv
+import 'dotenv/config';
 import express from 'express';
 import mongoose from 'mongoose';
 import path from 'path';
-import { fileURLToPath } from 'url'; // Import fileURLToPath
-import locationRoutes from './routes/locationRoutes.js'; // Add .js extension
+import { fileURLToPath } from 'url';
+import locationRoutes from './routes/locationRoutes.js';
+import mime from 'mime'; // Import the mime package
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -13,16 +14,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
+mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve static files with correct MIME types
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, path) => {
+        const mimeType = mime.getType(path);
+        if (mimeType) {
+            res.setHeader('Content-Type', mimeType);
+        }
+    }
+}));
+
+// Serve the favicon explicitly
+app.get('/favicon.ico', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
+});
 
 // Routes
 app.use('/location', locationRoutes);
