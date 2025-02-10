@@ -1,22 +1,34 @@
 import express from 'express';
 const router = express.Router();
-import http from 'http';
+import https from 'https';
 import Location from '../models/Location.js';
 
-const DEFAULT_IP = '24.48.0.1'; // Define a constant for the default IP
+const DEFAULT_IP = '24.48.0.1'; // Default IP for localhost or invalid IP cases
 
 router.get('/', async (req, res, next) => {
     try {
         let ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || DEFAULT_IP;
 
-        if (ip === '::1') {
+        // Extract first IP if multiple are provided
+        ip = ip.split(',')[0].trim();
+
+        // Convert IPv6-mapped IPv4 (::ffff:xx.xx.xx.xx) to standard IPv4
+        if (ip.startsWith('::ffff:')) {
+            ip = ip.substring(7);
+        }
+
+        // Handle localhost (::1)
+        if (ip === '::1' || ip === '127.0.0.1') {
             ip = DEFAULT_IP;
             console.log('Using default IP for localhost.');
         }
 
-        const apiUrl = `http://ip-api.com/json/${ip}?fields=status,countryCode,country,message`; // Include 'message' in fields
+        console.log('Detected IP:', ip);
 
-        http.get(apiUrl, (apiRes) => {
+        // Use HTTPS and remove unnecessary query fields
+        const apiUrl = `https://ip-api.com/json/${ip}`;
+
+        https.get(apiUrl, (apiRes) => {
             let data = '';
 
             apiRes.on('data', (chunk) => {
@@ -26,17 +38,17 @@ router.get('/', async (req, res, next) => {
             apiRes.on('end', async () => {
                 try {
                     const location = JSON.parse(data);
+                    console.log('API Response:', location);
 
                     if (location.status === 'fail') {
                         console.error('IP-API query failed:', location);
-                        const errorMessage = location.message || 'Unknown error from IP-API';
-                        return res.status(500).json({ error: `Error fetching location data: ${errorMessage}` });
+                        return res.status(500).json({ error: `Error fetching location data: ${location.message}` });
                     }
 
                     const countryCode = location.countryCode;
                     const countryName = location.country;
-
                     let message = '';
+
                     if (countryCode === 'IN') {
                         message = 'You are viewing from India.';
                     } else if (countryCode === 'US') {
@@ -45,18 +57,19 @@ router.get('/', async (req, res, next) => {
                         message = `Hello ${countryName}.`;
                     }
 
-                    // Update access count in MongoDB
+                    // Update MongoDB access count
                     try {
-                        const filter = { country: countryCode };
-                        const update = { $inc: { count: 1 } };
-                        const options = { upsert: true, new: true, setDefaultsOnInsert: true };
+                        const result = await Location.findOneAndUpdate(
+                            { country: countryCode },
+                            { $inc: { count: 1 } },
+                            { upsert: true, new: true }
+                        );
 
-                        const result = await Location.findOneAndUpdate(filter, update, options);
                         console.log('Access count updated:', result);
                         res.json({ message });
                     } catch (dbErr) {
                         console.error('Error updating access count:', dbErr);
-                        return next(dbErr); // Pass Mongoose errors to Express
+                        return next(dbErr);
                     }
                 } catch (parseError) {
                     console.error('Error parsing JSON:', parseError);
@@ -68,8 +81,8 @@ router.get('/', async (req, res, next) => {
             return res.status(500).json({ error: 'Error fetching location data' });
         });
     } catch (error) {
-        console.error('Error:', error);
-        return next(error); // Pass synchronous errors to Express
+        console.error('Unexpected error:', error);
+        return next(error);
     }
 });
 
